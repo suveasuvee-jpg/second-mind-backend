@@ -1,34 +1,23 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import OpenAI from "openai";
 
 const app = express();
 
 const PORT = process.env.PORT || 10000;
-const MODEL = process.env.OPENAI_MODEL || "gpt-5.6-luna";
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "*";
 
-if (!process.env.OPENAI_API_KEY) {
-  console.warn("WARNING: OPENAI_API_KEY is not configured.");
-}
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-// CORS
 app.use(
   cors({
     origin: FRONTEND_ORIGIN === "*" ? true : FRONTEND_ORIGIN,
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type"]
   })
 );
 
 app.use(express.json({ limit: "1mb" }));
 
-// Second Mind instructions
 const SYSTEM_PROMPT = `
 You are Second Mind, an intelligent personal AI assistant.
 
@@ -37,8 +26,8 @@ make a clear plan, and provide useful results.
 
 IMPORTANT RULES:
 
-1. Never claim you completed a real-world action unless an actual connected
-   tool has completed it.
+1. Never claim that you completed a real-world action unless an actual
+   connected tool completed it.
 
 2. If important information is missing, ask the user instead of guessing.
 
@@ -49,9 +38,9 @@ IMPORTANT RULES:
 4. Treat passwords, OTPs, API keys, banking information, identity documents,
    and other secrets as sensitive information.
 
-5. Never expose or invent private information.
+5. Do not invent bookings, emails, payments, website actions, or tool results.
 
-6. At this stage you only have text reasoning. You do NOT currently have
+6. At this stage you have text reasoning only. You do NOT currently have
    browser control, email access, payment access, or computer-control tools.
 
 7. When appropriate, structure tasks as:
@@ -63,31 +52,24 @@ IMPORTANT RULES:
    Result
 
 8. Be clear, practical and concise.
-
-9. Do not invent bookings, emails, payments, website actions, tool results,
-   or completed tasks.
 `;
 
-// Home
 app.get("/", (_req, res) => {
   res.json({
     name: "Second Mind Backend",
-    status: "online",
-    message: "Second Mind backend is running."
+    status: "online"
   });
 });
 
-// Health check
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "second-mind-backend",
     model: MODEL,
-    apiKeyConfigured: Boolean(process.env.OPENAI_API_KEY)
+    apiKeyConfigured: Boolean(process.env.GEMINI_API_KEY)
   });
 });
 
-// Chat API
 app.post("/chat", async (req, res) => {
   try {
     const { message, history = [] } = req.body || {};
@@ -99,59 +81,89 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({
         ok: false,
-        error: "OPENAI_API_KEY is not configured."
+        error: "GEMINI_API_KEY is not configured."
       });
     }
 
-    // Keep the latest conversation messages only.
-    const safeHistory = Array.isArray(history)
-      ? history
-          .filter(
-            item =>
-              item &&
-              (item.role === "user" || item.role === "assistant") &&
-              typeof item.content === "string"
-          )
-          .slice(-20)
-      : [];
+    const contents = [];
 
-    const input = [
-      ...safeHistory.map(item => ({
-        role: item.role,
-        content: [
-          {
-            type: "input_text",
-            text: item.content
-          }
-        ]
-      })),
+    if (Array.isArray(history)) {
+      history
+        .filter(
+          item =>
+            item &&
+            (item.role === "user" || item.role === "model") &&
+            typeof item.content === "string"
+        )
+        .slice(-20)
+        .forEach(item => {
+          contents.push({
+            role: item.role,
+            parts: [
+              {
+                text: item.content
+              }
+            ]
+          });
+        });
+    }
 
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: message.trim()
-          }
-        ]
-      }
-    ];
-
-    const response = await openai.responses.create({
-      model: MODEL,
-      instructions: SYSTEM_PROMPT,
-      input
+    contents.push({
+      role: "user",
+      parts: [
+        {
+          text: message.trim()
+        }
+      ]
     });
 
-    const reply = response.output_text?.trim();
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": process.env.GEMINI_API_KEY
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [
+              {
+                text: SYSTEM_PROMPT
+              }
+            ]
+          },
+          contents
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Gemini API error:", data);
+
+      return res.status(response.status).json({
+        ok: false,
+        error:
+          data?.error?.message ||
+          "Gemini API request failed."
+      });
+    }
+
+    const reply =
+      data?.candidates?.[0]?.content?.parts
+        ?.map(part => part.text || "")
+        .join("")
+        .trim();
 
     if (!reply) {
       return res.status(502).json({
         ok: false,
-        error: "The AI returned an empty response."
+        error: "Gemini returned an empty response."
       });
     }
 
@@ -162,16 +174,15 @@ app.post("/chat", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Second Mind error:", error);
+    console.error("Server error:", error);
 
     res.status(500).json({
       ok: false,
-      error: error.message || "AI request failed."
+      error: error.message || "Server error."
     });
   }
 });
 
-// Unknown route
 app.use((_req, res) => {
   res.status(404).json({
     ok: false,
@@ -179,7 +190,6 @@ app.use((_req, res) => {
   });
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`Second Mind backend running on port ${PORT}`);
 });
