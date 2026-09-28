@@ -5,7 +5,7 @@ import cors from "cors";
 const app = express();
 
 const PORT = process.env.PORT || 10000;
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "*";
 
 app.use(
