@@ -18,8 +18,7 @@ app.use(
 
 app.use(express.json({ limit: "1mb" }));
 
-const SYSTEM_PROMPT = `
-You are Second Mind, an intelligent personal AI assistant.
+const SYSTEM_PROMPT = `You are 2ndU, an intelligent personal AI assistant.
 
 Your job is to understand what the user wants, ask for missing information,
 make a clear plan, and provide useful results.
@@ -56,7 +55,7 @@ IMPORTANT RULES:
 
 app.get("/", (_req, res) => {
   res.json({
-    name: "Second Mind Backend",
+    name: "2ndU Backend",
     status: "online"
   });
 });
