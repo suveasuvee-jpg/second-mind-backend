@@ -51,6 +51,8 @@ IMPORTANT RULES:
    Result
 
 8. Be clear, practical and concise.
+9. For a straightforward question, answer it directly without a plan template.
+10. Use supplied server time for current date or time questions.
 `;
 
 app.get("/", (_req, res) => {
@@ -78,6 +80,13 @@ app.post("/chat", async (req, res) => {
         ok: false,
         error: "Message is required."
       });
+    }
+
+    const asksSingaporeTime = /(?:singapore|சிங்கப்பூர்)/i.test(message) && /(?:time|நேரம்|மணி)/i.test(message);
+    if (asksSingaporeTime) {
+      const now = new Intl.DateTimeFormat('en-SG', {timeZone:'Asia/Singapore', dateStyle:'full', timeStyle:'short'}).format(new Date());
+      const tamil = /[஀-௿]/.test(message);
+      return res.json({ok:true, reply:tamil ? `சிங்கப்பூரில் இப்போது ${now} (SGT, UTC+8).` : `The current time in Singapore is ${now} (SGT, UTC+8).`, model:'server-clock'});
     }
 
     if (!process.env.GEMINI_API_KEY) {
@@ -131,7 +140,7 @@ app.post("/chat", async (req, res) => {
           systemInstruction: {
             parts: [
               {
-                text: SYSTEM_PROMPT
+                text: SYSTEM_PROMPT + "\nCurrent UTC time: " + new Date().toISOString() + "\nCurrent Singapore time: " + new Intl.DateTimeFormat("en-SG", {timeZone:"Asia/Singapore", dateStyle:"full", timeStyle:"long"}).format(new Date())
               }
             ]
           },
