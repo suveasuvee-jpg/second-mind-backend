@@ -110,9 +110,7 @@ app.post("/chat", async (req, res) => {
       const question = message.split("\n\n").slice(1).join("\n\n") || message;
       const query = question.replace(/^search (?:the )?(?:web|internet|online)\s*:?\s*/i, "")
         .replace(/\b(?:give|answer|respond|reply)\b[\s\S]*$/i, "").trim().slice(0, 500);
-      const searchUrl = new URL("https://www.bing.com/search");
-      searchUrl.searchParams.set("q", query);
-      searchUrl.searchParams.set("format", "rss");
+      const searchUrl = "https://www.bing.com/search?format=rss&q=" + encodeURIComponent(query);
       const searchResponse = await fetch(searchUrl, { signal: AbortSignal.timeout(15000) });
       if (!searchResponse.ok) throw new Error("Web search is temporarily unavailable. Please retry.");
       const xml = await searchResponse.text();
